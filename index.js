@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 
 app.use(cors({
-    origin: ["http://localhost:5173", "https://sistem-pakar-beryl.vercel.app", "https://sistem-pakar-public-app.vercel.app"],
+    origin: ["http://localhost:5173","http://localhost:3007", "https://sistem-pakar-beryl.vercel.app", "https://sistem-pakar-public-app.vercel.app"],
     credentials: true,
 }));
 
