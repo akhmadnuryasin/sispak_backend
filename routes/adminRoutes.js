@@ -273,6 +273,98 @@ router.get('/damage', async (req, res) => {
     });
 });
 
+// rute menambahkan kerusakan
+router.post('/damage', async (req, res) => {
+    const { kerusakan } = req.body;
+
+    // Ambil kode gejala terakhir
+    const getLastCodeSql = 'SELECT kode_kerusakan FROM kerusakan ORDER BY kode_kerusakan DESC LIMIT 1';
+    pool.query(getLastCodeSql, (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+
+        let newKodeKerusakan;
+        if (results.length === 0) {
+            newKodeKerusakan = 'K01'; 
+        } else {
+            const lastKodeKerusakan = results[0].kode_kerusakan;
+            const lastNumber = parseInt(lastKodeKerusakan.slice(1), 10); 
+            const newNumber = lastNumber + 1;
+            newKodeKerusakan = 'K' + newNumber.toString().padStart(2, '0');
+        }
+
+        const insertSql = 'INSERT INTO kerusakan (kode_kerusakan, kerusakan) VALUES (?, ?)';
+        pool.query(insertSql, [newKodeKerusakan, kerusakan], (error, results) => {
+            if (error) {
+                console.error('Error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+            res.status(201).json({ message: 'Kerusakan berhasil ditambahkan', id: results.insertId });
+        });
+    });
+});
+
+
+// rute untuk mengedit data kerusakan
+router.put('/damage/:id', async (req, res) => {
+    const { id } = req.params;
+    const { kerusakan } = req.body;
+    
+    // Mengambil kode_gejala dari database untuk mempertahankan nilainya
+    const getKodeKerusakanSql = 'SELECT kode_kerusakan FROM kerusakan WHERE id = ?';
+    pool.query(getKodeKerusakanSql, [id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        
+        if (results.length === 0) {
+            res.status(404).json({ message: 'Kerusakan tidak ditemukan' });
+            return;
+        }
+        
+        const { kode_kerusakan } = results[0];
+        
+        // Memperbarui gejala saja, kode_gejala tetap sama
+        const updateSql = 'UPDATE kerusakan SET kerusakan = ? WHERE id = ?';
+        pool.query(updateSql, [kerusakan, id], (error, results) => {
+            if (error) {
+                console.error('Error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+            
+            res.status(200).json({ message: 'Kerusakan berhasil diubah' });
+        });
+    });
+});
+
+
+// rute untuk menghapus data gejala
+
+router.delete('/damage/:id', async (req, res) => {
+    const { id } = req.params;
+    const sql = 'DELETE FROM kerusakan WHERE id = ?';
+    pool.query(sql, [id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        if (results.affectedRows === 0) {
+            res.status(404).json({ message: 'Kerusakan tidak ditemukan' });
+            return;
+        }
+        res.status(200).json({ message: 'Kerusakan berhasil dihapus' });
+    });
+});
+
+
 // rute mengambil data probabilitas 
 router.get('/probability', async (req, res) => {
     const sql = `SELECT * FROM probabilitas`;
