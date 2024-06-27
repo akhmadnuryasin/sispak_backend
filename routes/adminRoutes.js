@@ -162,6 +162,98 @@ router.get('/symptom', async (req, res) => {
     });
 });
 
+// rute menambahkan gejala
+router.post('/symptom', async (req, res) => {
+    const { gejala } = req.body;
+
+    // Ambil kode gejala terakhir
+    const getLastCodeSql = 'SELECT kode_gejala FROM gejala ORDER BY kode_gejala DESC LIMIT 1';
+    pool.query(getLastCodeSql, (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+
+        let newKodeGejala;
+        if (results.length === 0) {
+            newKodeGejala = 'G01'; 
+        } else {
+            const lastKodeGejala = results[0].kode_gejala;
+            const lastNumber = parseInt(lastKodeGejala.slice(1), 10); 
+            const newNumber = lastNumber + 1;
+            newKodeGejala = 'G' + newNumber.toString().padStart(2, '0');
+        }
+
+        const insertSql = 'INSERT INTO gejala (kode_gejala, gejala) VALUES (?, ?)';
+        pool.query(insertSql, [newKodeGejala, gejala], (error, results) => {
+            if (error) {
+                console.error('Error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+            res.status(201).json({ message: 'Gejala berhasil ditambahkan', id: results.insertId });
+        });
+    });
+});
+
+// rute untuk mengedit data gejala
+router.put('/symptom/:id', async (req, res) => {
+    const { id } = req.params;
+    const { gejala } = req.body;
+    
+    // Mengambil kode_gejala dari database untuk mempertahankan nilainya
+    const getKodeGejalaSql = 'SELECT kode_gejala FROM gejala WHERE id = ?';
+    pool.query(getKodeGejalaSql, [id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        
+        if (results.length === 0) {
+            res.status(404).json({ message: 'Gejala tidak ditemukan' });
+            return;
+        }
+        
+        const { kode_gejala } = results[0];
+        
+        // Memperbarui gejala saja, kode_gejala tetap sama
+        const updateSql = 'UPDATE gejala SET gejala = ? WHERE id = ?';
+        pool.query(updateSql, [gejala, id], (error, results) => {
+            if (error) {
+                console.error('Error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+            
+            res.status(200).json({ message: 'Gejala berhasil diubah' });
+        });
+    });
+});
+
+
+// rute untuk menghapus data gejala
+
+router.delete('/symptom/:id', async (req, res) => {
+    const { id } = req.params;
+    const sql = 'DELETE FROM gejala WHERE id = ?';
+    pool.query(sql, [id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        if (results.affectedRows === 0) {
+            res.status(404).json({ message: 'Gejala tidak ditemukan' });
+            return;
+        }
+        res.status(200).json({ message: 'Gejala berhasil dihapus' });
+    });
+});
+
+
+
 // rute mengambil data kerusakan 
 router.get('/damage', async (req, res) => {
     const sql = `SELECT * FROM kerusakan`;
