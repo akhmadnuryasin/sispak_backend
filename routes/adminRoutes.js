@@ -385,6 +385,110 @@ router.get('/probability', async (req, res) => {
 });
 
 
+// rute untuk menambahkan data probabilitas
+router.post('/probability', async (req, res) => {
+    const { kode_kerusakan, probabilitas } = req.body;
+
+    // Cek apakah kode_kerusakan ada di tabel kerusakan
+    const checkSql = 'SELECT * FROM kerusakan WHERE kode_kerusakan = ?';
+    pool.query(checkSql, [kode_kerusakan], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+
+        if (results.length === 0) {
+            res.status(400).json({ message: 'Kode kerusakan tidak ditemukan di tabel kerusakan' });
+            return;
+        }
+
+        // Cek apakah kode_kerusakan sudah ada di tabel probabilitas
+        const checkExistenceSql = 'SELECT * FROM probabilitas WHERE kode_kerusakan = ?';
+        pool.query(checkExistenceSql, [kode_kerusakan], (error, results) => {
+            if (error) {
+                console.error('Error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+
+            if (results.length > 0) {
+                res.status(400).json({ message: 'Kode kerusakan sudah ada di tabel probabilitas' });
+                return;
+            }
+
+            // Tambahkan data ke tabel probabilitas
+            const insertSql = 'INSERT INTO probabilitas (kode_kerusakan, probabilitas) VALUES (?, ?)';
+            pool.query(insertSql, [kode_kerusakan, probabilitas], (error, results) => {
+                if (error) {
+                    console.error('Error:', error);
+                    res.status(500).json({ error: 'Internal server error' });
+                    return;
+                }
+                res.status(201).json({ message: 'Data probabilitas berhasil ditambahkan' });
+            });
+        });
+    });
+});
+
+// rute untuk mengedit data probabilitas
+router.put('/probability/:id', async (req, res) => {
+    const { id } = req.params;
+    const { kode_kerusakan, probabilitas } = req.body;
+
+    // Cek apakah kode_kerusakan ada di tabel kerusakan
+    const checkSql = 'SELECT * FROM kerusakan WHERE kode_kerusakan = ?';
+    pool.query(checkSql, [kode_kerusakan], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+
+        if (results.length === 0) {
+            res.status(400).json({ message: 'Kode kerusakan tidak ditemukan di tabel kerusakan' });
+            return;
+        }
+
+        // Update data di tabel probabilitas
+        const updateSql = 'UPDATE probabilitas SET kode_kerusakan = ?, probabilitas = ? WHERE id = ?';
+        pool.query(updateSql, [kode_kerusakan, probabilitas, id], (error, results) => {
+            if (error) {
+                console.error('Error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+            if (results.affectedRows === 0) {
+                res.status(404).json({ message: 'Data probabilitas tidak ditemukan' });
+                return;
+            }
+            res.status(200).json({ message: 'Data probabilitas berhasil diperbarui' });
+        });
+    });
+});
+
+
+// rute untuk menghapus data probabilitas
+
+router.delete('/probability/:id', async (req, res) => {
+    const { id } = req.params;
+    const sql = 'DELETE FROM probabilitas WHERE id = ?';
+    pool.query(sql, [id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        if (results.affectedRows === 0) {
+            res.status(404).json({ message: 'Kerusakan tidak ditemukan' });
+            return;
+        }
+        res.status(200).json({ message: 'Kerusakan berhasil dihapus' });
+    });
+});
+
+
+
 // rute mengambil data bobot gejala 
 router.get('/symptomseverity', async (req, res) => {
     const sql = `SELECT * FROM basis_pengetahuan`;
