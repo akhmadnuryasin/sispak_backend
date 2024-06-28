@@ -469,7 +469,6 @@ router.put('/probability/:id', async (req, res) => {
 
 
 // rute untuk menghapus data probabilitas
-
 router.delete('/probability/:id', async (req, res) => {
     const { id } = req.params;
     const sql = 'DELETE FROM probabilitas WHERE id = ?';
@@ -505,6 +504,107 @@ router.get('/symptomseverity', async (req, res) => {
         }
 
         res.status(200).json(results);
+    });
+});
+
+// rute untuk menambah bobot gejala
+router.post('/symptomseverity', async (req, res) => {
+    const { kode_gejala, kode_kerusakan, bobot_gejala } = req.body;
+
+    // Check if kode_kerusakan exists in kerusakan table
+    const checkKerusakanSql = 'SELECT * FROM kerusakan WHERE kode_kerusakan = ?';
+    pool.query(checkKerusakanSql, [kode_kerusakan], (error, kerusakanResults) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+
+        if (kerusakanResults.length === 0) {
+            res.status(404).json({ message: 'Kode kerusakan tidak ditemukan' });
+            return;
+        }
+
+        // Check if kode_gejala exists in gejala table
+        const checkGejalaSql = 'SELECT * FROM gejala WHERE kode_gejala = ?';
+        pool.query(checkGejalaSql, [kode_gejala], (error, gejalaResults) => {
+            if (error) {
+                console.error('Error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+
+            if (gejalaResults.length === 0) {
+                res.status(404).json({ message: 'Kode gejala tidak ditemukan' });
+                return;
+            }
+
+            // Check if combination of kode_gejala and kode_kerusakan already exists in basis_pengetahuan table
+            const checkBasisPengetahuanSql = 'SELECT * FROM basis_pengetahuan WHERE kode_gejala = ? AND kode_kerusakan = ?';
+            pool.query(checkBasisPengetahuanSql, [kode_gejala, kode_kerusakan], (error, basisPengetahuanResults) => {
+                if (error) {
+                    console.error('Error:', error);
+                    res.status(500).json({ error: 'Internal server error' });
+                    return;
+                }
+
+                if (basisPengetahuanResults.length > 0) {
+                    res.status(409).json({ message: 'Combination of kode gejala and kode kerusakan already exists' });
+                    return;
+                }
+
+                // Insert new symptom severity
+                const insertSql = 'INSERT INTO basis_pengetahuan (kode_gejala, kode_kerusakan, bobot_gejala) VALUES (?, ?, ?)';
+                pool.query(insertSql, [kode_gejala, kode_kerusakan, bobot_gejala], (error, results) => {
+                    if (error) {
+                        console.error('Error:', error);
+                        res.status(500).json({ error: 'Internal server error' });
+                        return;
+                    }
+
+                    res.status(201).json({ message: 'Symptom severity created successfully', id: results.insertId });
+                });
+            });
+        });
+    });
+});
+
+// rute untuk mengedit bobot gejala
+router.put('/symptomseverity/:id', async (req, res) => {
+    const { id } = req.params;
+    const { kode_gejala, kode_kerusakan, bobot_gejala } = req.body;
+    const sql = 'UPDATE basis_pengetahuan SET kode_gejala = ?, kode_kerusakan = ?, bobot_gejala = ? WHERE id = ?';
+    pool.query(sql, [kode_gejala, kode_kerusakan, bobot_gejala, id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+
+        if (results.affectedRows === 0) {
+            res.status(404).json({ message: 'Symptom severity not found' });
+            return;
+        }
+
+        res.status(200).json({ message: 'Symptom severity updated successfully' });
+    });
+});
+
+// rute untuk menghapus data bobot gejala
+router.delete('/symptomseverity/:id', async (req, res) => {
+    const { id } = req.params;
+    const sql = 'DELETE FROM basis_pengetahuan WHERE id = ?';
+    pool.query(sql, [id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        if (results.affectedRows === 0) {
+            res.status(404).json({ message: 'bobot gejala tidak ditemukan' });
+            return;
+        }
+        res.status(200).json({ message: 'bobot gejala berhasil dihapus' });
     });
 });
 
