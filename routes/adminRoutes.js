@@ -628,6 +628,76 @@ router.get('/rule', async (req, res) => {
     });
 });
 
+/// Endpoint untuk menambah data baru ke tabel rule_aturan
+router.post('/rule', async (req, res) => {
+    const { rule_kondisi, hasil } = req.body;
+
+    // Periksa apakah rule_kondisi sudah ada
+    const checkDuplicateSql = 'SELECT COUNT(*) AS count FROM rule_aturan WHERE rule_kondisi = ?';
+    pool.query(checkDuplicateSql, [rule_kondisi], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+
+        if (results[0].count > 0) {
+            res.status(400).json({ error: 'rule_kondisi sudah ada, tidak bisa menambahkan data baru' });
+            return;
+        }
+
+        // Jika rule_kondisi belum ada, tambahkan data baru
+        const insertSql = 'INSERT INTO rule_aturan (rule_kondisi, hasil) VALUES (?, ?)';
+        pool.query(insertSql, [rule_kondisi, hasil], (error, results) => {
+            if (error) {
+                console.error('Error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+            res.status(201).json({ message: 'Data berhasil ditambahkan', id: results.insertId });
+        });
+    });
+});
+
+// Rute untuk mengedit data pada rule_aturan berdasarkan ID
+router.put('/rule/:id', async (req, res) => {
+    const { id } = req.params;
+    const { rule_kondisi, hasil } = req.body;
+    const sql = 'UPDATE rule_aturan SET rule_kondisi = ?, hasil = ? WHERE id = ?';
+    pool.query(sql, [rule_kondisi, hasil, id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        if (results.affectedRows === 0) {
+            res.status(404).json({ message: 'Rule tidak ditemukan' });
+            return;
+        }
+        res.status(200).json({ id, rule_kondisi, hasil });
+    });
+});
+
+
+// rute untuk menghapus data bobot gejala
+router.delete('/rule/:id', async (req, res) => {
+    const { id } = req.params;
+    const sql = 'DELETE FROM rule_aturan WHERE id = ?';
+    pool.query(sql, [id], (error, results) => {
+        if (error) {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        if (results.affectedRows === 0) {
+            res.status(404).json({ message: 'rule tidak ditemukan' });
+            return;
+        }
+        res.status(200).json({ message: 'rule berhasil dihapus' });
+    });
+});
+
+
 // Rute diagnosa
 router.get('/diagnose', async (req, res) => {
     const sql = `SELECT * FROM gejala`;
