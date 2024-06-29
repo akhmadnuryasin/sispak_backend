@@ -21,7 +21,7 @@ function handleDisconnect() {
     pool.getConnection((err, connection) => {
         if (err) {
             console.error('Error connecting to database:', err);
-            setTimeout(handleDisconnect, 2000); // Coba reconnect setelah 2 detik
+            setTimeout(handleDisconnect, 2000); 
         } else {
             console.log('Connected to database!');
             connection.release();
@@ -31,7 +31,7 @@ function handleDisconnect() {
     pool.on('error', (err) => {
         console.error('Database error:', err);
         if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-            handleDisconnect(); // Reconnect jika koneksi terputus
+            handleDisconnect(); 
         } else {
             throw err;
         }
@@ -41,107 +41,236 @@ function handleDisconnect() {
 handleDisconnect();
 
 router.get("/", (req, res) => {
-    res.send("Sistem Pakar Backend App | Client");
+    res.send("Sistem Pakar Backend App | Admin");
 });
 
-router.post("/register", (req, res) => {
-    const email = req.body.email;
-    const password = req.body.password;
-    bcrypt.hash(password, saltRounds, (err, hash) => {
+
+// Route untuk login
+router.post('/login', (req, res) => {
+    const { username, password } = req.body;
+  
+    
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error('Error connecting to database: ' + err.stack);
+        return res.status(500).send('Error connecting to database');
+      }
+  
+      
+      const getUserQuery = 'SELECT * FROM users WHERE username = ?';
+      connection.query(getUserQuery, [username], (error, results, fields) => {
+        connection.release(); 
+  
+        if (error) {
+          console.error('Error retrieving user: ' + error.stack);
+          return res.status(500).send('Error retrieving user');
+        }
+  
+        // Periksa apakah pengguna ditemukan
+        if (results.length === 0) {
+          return res.status(404).send('User not found');
+        }
+  
+        const user = results[0];
+  
+        // Verifikasi password
+        bcrypt.compare(password, user.password, (bcryptErr, bcryptRes) => {
+          if (bcryptErr) {
+            console.error('Error comparing passwords: ' + bcryptErr.stack);
+            return res.status(500).send('Error comparing passwords');
+          }
+  
+          if (!bcryptRes) {
+            return res.status(401).send('Invalid password');
+          }
+  
+          // Berhasil login
+          req.session.user = {
+            id: user.id,
+            username: user.username
+            // Tambahkan data lain dari user jika diperlukan
+          };
+  
+          res.status(200).send('Login successful');
+        });
+      });
+    });
+  });
+  
+
+  // Route untuk logout
+router.post('/logout', (req, res) => {
+    // Hapus data sesi pengguna
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('Error destroying session: ' + err.stack);
+        return res.status(500).send('Error destroying session');
+      }
+  
+      // Berhasil logout
+      res.status(200).send('Logout successful');
+    });
+  });
+  
+  module.exports = router;
+  
+
+router.post('/users', (req, res) => {
+    const { username, password } = req.body;
+
+    // Buat koneksi dari pool
+    pool.getConnection((err, connection) => {
         if (err) {
-            console.log(err);
-            res.status(500).send({ error: "Internal Server Error" });
-            return;
+            console.error('Error connecting to database: ' + err.stack);
+            return res.status(500).send('Error connecting to database');
         }
 
-        const data = {
-            email: email,
-            password: hash,
-        };
-
-        let sql = "SELECT * FROM users WHERE email = ?";
-        pool.query(sql, [email], (err, result) => {
-            if (err) {
-                console.log(err);
-                res.status(500).send({ error: "Internal Server Error" });
-                return;
+        // Hash password menggunakan bcrypt
+        bcrypt.hash(password, 10, (bcryptErr, hashedPassword) => {
+            if (bcryptErr) {
+                console.error('Error hashing password: ' + bcryptErr.stack);
+                return res.status(500).send('Error hashing password');
             }
 
-            if (result.length > 0) {
-                res.status(400).send({ error: "User Email Already Present" });
-                return;
-            }
+            // Query untuk menambah pengguna dengan password yang sudah di-hash
+            const addUserQuery = 'INSERT INTO users (username, password) VALUES (?, ?)';
+            connection.query(addUserQuery, [username, hashedPassword], (error, results, fields) => {
+                connection.release(); 
 
-            sql = "INSERT INTO users SET ?";
-            pool.query(sql, data, (err, result) => {
-                if (err) {
-                    console.log(err);
-                    res.status(500).send({ error: "Internal Server Error" });
-                    return;
+                if (error) {
+                    console.error('Error inserting user: ' + error.stack);
+                    return res.status(500).send('Error inserting user');
                 }
 
-                res.status(200).send(result);
+                // Berhasil menambah pengguna
+                res.status(200).send('User added successfully');
             });
         });
     });
-});
-
-router.post("/login", (req, res) => {
-    const email = req.body.email;
-    const password = req.body.password;
-    let sql = "SELECT * FROM users WHERE email = ?";
-    pool.query(sql, [email], (err, result) => {
-        if (err) {
-            console.log(err);
-            res.status(500).send({ error: "Internal Server Error" });
-            return;
+}); 
+  // Route untuk mengambil semua pengguna
+router.get('/users', (req, res) => {
+    // Buat koneksi dari pool
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error('Error connecting to database: ' + err.stack);
+        return res.status(500).send('Error connecting to database');
+      }
+  
+      // Query untuk mengambil semua pengguna
+      const getUsersQuery = 'SELECT * FROM users';
+      connection.query(getUsersQuery, (error, results, fields) => {
+        connection.release(); // Lepaskan koneksi
+  
+        if (error) {
+          console.error('Error retrieving users: ' + error.stack);
+          return res.status(500).send('Error retrieving users');
         }
-
-        if (result.length === 0) {
-            res.status(401).send({ error: "User Email Not Exists" });
-            return;
-        }
-
-        bcrypt.compare(password, result[0].password, (err, response) => {
-            if (err) {
-                console.log(err);
-                res.status(500).send({ error: "Internal Server Error" });
-                return;
-            }
-
-            if (response) {
-                req.session.user = result;
-                res.status(200).send({ login: true, useremail: email });
-            } else {
-                res.status(401).send({ login: false, msg: "Wrong Password" });
-            }
-        });
+  
+        // Kirim data pengguna yang berhasil diambil
+        res.status(200).json(results);
+      });
     });
-});
+  });
+  
+  // Route untuk mengambil satu pengguna berdasarkan ID
+  router.get('/users/:id', (req, res) => {
+    const userId = req.params.id;
+  
+    // Buat koneksi dari pool
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error('Error connecting to database: ' + err.stack);
+        return res.status(500).send('Error connecting to database');
+      }
+  
+      // Query untuk mengambil satu pengguna berdasarkan ID
+      const getUserQuery = 'SELECT * FROM users WHERE id = ?';
+      connection.query(getUserQuery, [userId], (error, results, fields) => {
+        connection.release(); // Lepaskan koneksi
+  
+        if (error) {
+          console.error('Error retrieving user: ' + error.stack);
+          return res.status(500).send('Error retrieving user');
+        }
+  
+        // Periksa apakah pengguna ditemukan
+        if (results.length === 0) {
+          return res.status(404).send('User not found');
+        }
+  
+        // Kirim data pengguna yang berhasil diambil
+        res.status(200).json(results[0]);
+      });
+    });
+  });
+  
+  // Route untuk mengubah pengguna berdasarkan ID
+router.put('/users/:id', (req, res) => {
+    const userId = req.params.id;
+    const { username, password } = req.body;
+  
+    // Buat koneksi dari pool
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error('Error connecting to database: ' + err.stack);
+        return res.status(500).send('Error connecting to database');
+      }
+  
+      // Query untuk mengubah pengguna
+      const updateUserQuery = 'UPDATE users SET username = ?, password = ? WHERE id = ?';
+      connection.query(updateUserQuery, [username, password, userId], (error, results, fields) => {
+        connection.release(); // Lepaskan koneksi
+  
+        if (error) {
+          console.error('Error updating user: ' + error.stack);
+          return res.status(500).send('Error updating user');
+        }
+  
+        // Periksa apakah pengguna berhasil diubah
+        if (results.affectedRows === 0) {
+          return res.status(404).send('User not found');
+        }
+  
+        // Berhasil mengubah pengguna
+        res.status(200).send('User updated successfully');
+      });
+    });
+  });
+  
+  // Route untuk menghapus pengguna berdasarkan ID
+router.delete('/users/:id', (req, res) => {
+    const userId = req.params.id;
+  
+    // Buat koneksi dari pool
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error('Error connecting to database: ' + err.stack);
+        return res.status(500).send('Error connecting to database');
+      }
+  
+      // Query untuk menghapus pengguna
+      const deleteUserQuery = 'DELETE FROM users WHERE id = ?';
+      connection.query(deleteUserQuery, [userId], (error, results, fields) => {
+        connection.release(); // Lepaskan koneksi
+  
+        if (error) {
+          console.error('Error deleting user: ' + error.stack);
+          return res.status(500).send('Error deleting user');
+        }
+  
+        // Periksa apakah pengguna berhasil dihapus
+        if (results.affectedRows === 0) {
+          return res.status(404).send('User not found');
+        }
+  
+        // Berhasil menghapus pengguna
+        res.status(200).send('User deleted successfully');
+      });
+    });
+  });
 
-router.get("/login", (req, res) => {
-    if (req.session.user) {
-        res.status(200).send({ login: true, user: req.session.user });
-    } else {
-        res.status(200).send({ login: false });
-    }
-});
-
-router.get("/logout", (req, res) => {
-    if (req.session.user) {
-        req.session.destroy((err) => {
-            if (err) {
-                console.error("Error destroying session:", err);
-                res.status(500).send({ logout: false, error: "Internal Server Error" });
-            } else {
-                res.clearCookie("userId");
-                res.status(200).send({ logout: true });
-            }
-        });
-    } else {
-        res.status(200).send({ logout: false, msg: "User is not logged in" });
-    }
-});
+  
 
 // rute dashboard
 router.get('/dashboard', (req, res) => {
