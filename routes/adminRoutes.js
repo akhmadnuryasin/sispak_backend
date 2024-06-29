@@ -49,17 +49,15 @@ router.get("/", (req, res) => {
 router.post('/login', (req, res) => {
     const { username, password } = req.body;
   
-    
     pool.getConnection((err, connection) => {
       if (err) {
         console.error('Error connecting to database: ' + err.stack);
         return res.status(500).send('Error connecting to database');
       }
   
-      
       const getUserQuery = 'SELECT * FROM users WHERE username = ?';
       connection.query(getUserQuery, [username], (error, results, fields) => {
-        connection.release(); 
+        connection.release();
   
         if (error) {
           console.error('Error retrieving user: ' + error.stack);
@@ -87,15 +85,21 @@ router.post('/login', (req, res) => {
           // Berhasil login
           req.session.user = {
             id: user.id,
-            username: user.username
+            username: user.username,
             // Tambahkan data lain dari user jika diperlukan
           };
   
-          res.status(200).send('Login successful');
+          // Kirim respons dengan data pengguna yang berhasil login
+          res.status(200).json({
+            id: user.id,
+            username: user.username,
+            // Kirim data lain dari user jika diperlukan
+          });
         });
       });
     });
   });
+  
   
 
   // Route untuk logout
