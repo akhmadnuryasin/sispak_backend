@@ -143,6 +143,80 @@ router.get("/logout", (req, res) => {
     }
 });
 
+// rute dashboard
+router.get('/dashboard', (req, res) => {
+    const queries = [
+        { table: 'gejala', name: 'Gejala', icon: 'IconVirusSearch', sql: 'SELECT COUNT(*) AS count FROM gejala' },
+        { table: 'kerusakan', name: 'Kerusakan', icon: 'IconCarCrash', sql: 'SELECT COUNT(*) AS count FROM kerusakan' },
+        { table: 'probabilitas', name: 'Probabilitas', icon: 'IconAbacus', sql: 'SELECT COUNT(*) AS count FROM probabilitas' },
+        { table: 'basis_pengetahuan', name: 'Bobot Gejala', icon: 'IconScale', sql: 'SELECT COUNT(*) AS count FROM basis_pengetahuan' },
+        { table: 'rule_aturan', name: 'Rule', icon: 'IconRulerMeasure', sql: 'SELECT COUNT(*) AS count FROM rule_aturan' },
+        { table: 'users', name: 'Pengguna', icon: 'IconUsersGroup', sql: 'SELECT COUNT(*) AS count FROM users' }
+    ];
+
+    const dashboardData = {};
+
+    // Execute queries sequentially
+    executeQueriesSequentially(queries)
+        .then(results => {
+            // Format results into dashboardData object
+            results.forEach((result, index) => {
+                const query = queries[index];
+                dashboardData[query.table] = {
+                    name: query.name,
+                    icon: query.icon,
+                    count: result[0].count
+                };
+            });
+
+            // Send response with dashboardData
+            res.status(200).json(dashboardData);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        });
+});
+
+// Function to execute queries sequentially
+function executeQueriesSequentially(queries) {
+    const promises = [];
+    queries.forEach(query => {
+        promises.push(new Promise((resolve, reject) => {
+            pool.query(query.sql, (error, results) => {
+                if (error) {
+                    console.error(`Error retrieving ${query.name} count:`, error);
+                    reject(error);
+                } else {
+                    resolve(results);
+                }
+            });
+        }));
+    });
+    return Promise.all(promises);
+}
+
+
+// Function to execute queries sequentially
+function executeQueriesSequentially(queries) {
+    const promises = [];
+    queries.forEach(query => {
+        promises.push(new Promise((resolve, reject) => {
+            pool.query(query.sql, (error, results) => {
+                if (error) {
+                    console.error(`Error retrieving ${query.name} count:`, error);
+                    reject(error);
+                } else {
+                    resolve(results);
+                }
+            });
+        }));
+    });
+    return Promise.all(promises);
+}
+
+
+
 // rute mengambil data gejala 
 router.get('/symptom', async (req, res) => {
     const sql = `SELECT * FROM gejala`;
