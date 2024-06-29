@@ -148,7 +148,8 @@ router.post('/users', (req, res) => {
         });
     });
 }); 
-  // Route untuk mengambil semua pengguna
+
+// Route untuk mengambil semua pengguna
 router.get('/users', (req, res) => {
     // Buat koneksi dari pool
     pool.getConnection((err, connection) => {
@@ -206,36 +207,52 @@ router.get('/users', (req, res) => {
   });
   
   // Route untuk mengubah pengguna berdasarkan ID
-router.put('/users/:id', (req, res) => {
-    const userId = req.params.id;
-    const { username, password } = req.body;
-  
-    // Buat koneksi dari pool
-    pool.getConnection((err, connection) => {
-      if (err) {
-        console.error('Error connecting to database: ' + err.stack);
-        return res.status(500).send('Error connecting to database');
-      }
-  
-      // Query untuk mengubah pengguna
-      const updateUserQuery = 'UPDATE users SET username = ?, password = ? WHERE id = ?';
-      connection.query(updateUserQuery, [username, password, userId], (error, results, fields) => {
-        connection.release(); // Lepaskan koneksi
-  
-        if (error) {
-          console.error('Error updating user: ' + error.stack);
-          return res.status(500).send('Error updating user');
+  router.put('/users/:id', (req, res) => {
+      const userId = req.params.id;
+      const { username, password } = req.body;
+    
+      // Buat koneksi dari pool
+      pool.getConnection((err, connection) => {
+        if (err) {
+          console.error('Error connecting to database: ' + err.stack);
+          return res.status(500).send('Error connecting to database');
         }
-  
-        // Periksa apakah pengguna berhasil diubah
-        if (results.affectedRows === 0) {
-          return res.status(404).send('User not found');
+    
+        // Fungsi untuk update user dengan password yang sudah di-hash
+        const updateUser = (hashedPassword) => {
+          const updateUserQuery = 'UPDATE users SET username = ?, password = ? WHERE id = ?';
+          connection.query(updateUserQuery, [username, hashedPassword, userId], (error, results, fields) => {
+            connection.release(); // Lepaskan koneksi
+    
+            if (error) {
+              console.error('Error updating user: ' + error.stack);
+              return res.status(500).send('Error updating user');
+            }
+    
+            // Periksa apakah pengguna berhasil diubah
+            if (results.affectedRows === 0) {
+              return res.status(404).send('User not found');
+            }
+    
+            // Berhasil mengubah pengguna
+            res.status(200).send('User updated successfully');
+          });
+        };
+    
+        // Jika password ada di request, hash password sebelum update
+        if (password) {
+          bcrypt.hash(password, 10, (bcryptErr, hashedPassword) => {
+            if (bcryptErr) {
+              console.error('Error hashing password: ' + bcryptErr.stack);
+              return res.status(500).send('Error hashing password');
+            }
+            updateUser(hashedPassword);
+          });
+        } else {
+          // Jika tidak ada password di request, hanya update username
+          updateUser(null);
         }
-  
-        // Berhasil mengubah pengguna
-        res.status(200).send('User updated successfully');
       });
-    });
   });
   
   // Route untuk menghapus pengguna berdasarkan ID
