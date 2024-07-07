@@ -46,180 +46,143 @@ router.get("/", (req, res) => {
 
 
 // Rute diagnosa
-router.get('/diagnose', async (req, res) => {
-    const sql = `SELECT * FROM gejala`;
-    pool.query(sql, (error, results) => {
-        if (error) {
-            console.error('Error:', error);
-            res.status(500).json({ error: 'Internal server error' });
-            return;
-        }
-
-        if (results.length === 0) {
-            res.status(404).json({ message: 'No symptoms found' });
-            return;
-        }
-
-        res.status(200).json(results);
-    });
-});
-
 router.post('/diagnose', (req, res) => {
     const { symptoms } = req.body;
 
-    const query1 = `
-    SELECT k.kode_kerusakan, k.kerusakan, p.probabilitas
-    FROM kerusakan k
-    INNER JOIN probabilitas p ON k.kode_kerusakan = p.kode_kerusakan;
-    `;
+    // Menghapus duplikat gejala dan hanya menyimpan gejala unik
+    const uniqueSymptoms = [...new Set(symptoms)];
 
-    const query2 = `
-    SELECT * from basis_pengetahuan;
-    `;
+    // Query untuk mengambil semua aturan dari tabel rule_aturan
+    const ruleQuery = `SELECT * FROM rule_aturan`;
 
-    const query3 = `
-    SELECT * from rule_aturan;
-    `;
-
-    pool.query(query1, (err, result) => {
+    pool.query(ruleQuery, (err, ruleResults) => {
         if (err) {
-            console.error('Error:', err);
+            console.error('Error querying rule_aturan:', err);
             res.status(500).json({ error: 'Internal server error' });
             return;
         }
 
-        let issues = [];
+        // Mengubah hasil query menjadi array of objects yang masing-masing
+        // memiliki conditions (kondisi) dan result (hasil)
+        const rules = ruleResults.map(row => ({
+            conditions: row.rule_kondisi.split(','), // Memisahkan kondisi berdasarkan koma
+            result: row.hasil,
+        }));
 
-        result.forEach(row => {
-            issues.push({
-                code: row.kode_kerusakan,
-                name: row.kerusakan,
-                probability: row.probabilitas
-            });
-        });
+        // Query untuk mengambil nilai_gejala dari basis_pengetahuan berdasarkan kode_gejala
+        const basisPengetahuanQuery = `
+            SELECT kode_gejala, nilai_gejala
+            FROM basis_pengetahuan
+            WHERE kode_gejala IN (?)
+        `;
 
-        pool.query(query2, (err, result) => {
+        pool.query(basisPengetahuanQuery, [uniqueSymptoms], (err, bpResults) => {
             if (err) {
-                console.error('Error:', err);
+                console.error('Error querying basis_pengetahuan:', err);
                 res.status(500).json({ error: 'Internal server error' });
                 return;
             }
 
-            let symptomsData = {};
-
-            result.forEach(row => {
-                const { kode_gejala, kode_kerusakan, bobot_gejala } = row;
-                if (!symptomsData[kode_gejala]) {
-                    symptomsData[kode_gejala] = {};
-                }
-                symptomsData[kode_gejala][kode_kerusakan] = bobot_gejala;
+            // Membuat object untuk memetakan kode_gejala ke nilai_gejala
+            const gejalaMap = {};
+            bpResults.forEach(row => {
+                gejalaMap[row.kode_gejala] = row.nilai_gejala;
             });
 
-            pool.query(query3, (err, result) => {
+            // Query untuk mengambil probabilitas dari tabel probabilitas beserta nama kerusakan dari tabel kerusakan
+            const probabilitasQuery = `
+                SELECT p.kode_kerusakan, k.kerusakan, p.probabilitas
+                FROM probabilitas p
+                LEFT JOIN kerusakan k ON p.kode_kerusakan = k.kode_kerusakan
+            `;
+
+            pool.query(probabilitasQuery, (err, probResults) => {
                 if (err) {
-                    console.error('Error:', err);
+                    console.error('Error querying probabilitas:', err);
                     res.status(500).json({ error: 'Internal server error' });
                     return;
                 }
 
-                let rules = [];
-
-                result.forEach(row => {
-                    const conditions = row.rule_kondisi.split(',');
-                    rules.push({
-                        conditions: conditions,
-                        result: row.hasil,
-                    });
+                // Membuat object untuk memetakan kode_kerusakan ke objek {nama_kerusakan, probabilitas}
+                const probMap = {};
+                probResults.forEach(row => {
+                    probMap[row.kode_kerusakan] = {
+                        kerusakan: row.kerusakan,
+                        probabilitas: row.probabilitas
+                    };
                 });
 
-                const uniqueIssues = [];
-                const uniqueSymptoms = [...new Set(symptoms)];
+                // Membuat array gejala_user dengan format yang diinginkan
+                const gejalaUser = uniqueSymptoms.map(symptom => `${symptom}: ${gejalaMap[symptom] || 'not found'}`);
 
+                let nilaiRuleKerusakan = {};
+                let gejalaRulesYangTerjadi = [];
+                let hitunganMasingMasingPenyakit = [];
+                let hitunganMasingMasingKerusakan = [];
+                let totalProbabilitas = 0;
+
+                // Memeriksa setiap aturan untuk mencocokkan gejala yang diterima
                 rules.forEach(rule => {
-                    if (rule.conditions.every(condition => uniqueSymptoms.includes(condition))) {
-                        uniqueIssues.push(rule.result);
-                    }
-                });
-
-                uniqueSymptoms.forEach(symptom => {
-                    if (symptomsData[symptom]) {
-                        uniqueIssues.push(...Object.keys(symptomsData[symptom]));
-                    }
-                });
-
-                const uniqueIssueCodes = Array.from(new Set(uniqueIssues));
-                const response = [{ "Gejala": uniqueSymptoms }];
-
-                const probabilities = {};
-                issues.forEach(issue => {
-                    probabilities[issue.code] = issue.probability;
-                });
-                response.push({ "Probabilitas Hipotesis/Kerusakan": probabilities });
-
-                uniqueIssueCodes.forEach(issueCode => {
-                    const issue = issues.find(issue => issue.code === issueCode);
-                    const issueInfo = {
-                        code: issue.code,
-                        name: issue.name,
-                        probability: issue.probability
-                    };
-
-                    const bayesValues = {};
-                    let totalBayes = 0;
-
-                    uniqueSymptoms.forEach(symptom => {
-                        const weight = symptomsData[symptom]?.[issueCode] || 0;
-                        const kIssue = issue.probability;
-                        const kSymptom = weight;
-                        const numerator = kSymptom * kIssue;
-                        let denominator = 0;
-                        issues.forEach(issue => {
-                            const kSymptom_i = symptomsData[symptom]?.[issue.code] || 0;
-                            denominator += kSymptom_i * issue.probability;
-                        });
-                        const bayes = numerator / denominator;
-                        bayesValues[symptom] = parseFloat(bayes.toFixed(2));
-                        totalBayes += bayes;
+                    rule.conditions.forEach(condition => {
+                        const trimmedCondition = condition.trim();
+                        if (uniqueSymptoms.includes(trimmedCondition)) {
+                            gejalaRulesYangTerjadi.push(`${trimmedCondition} pada ${rule.result}`);
+                            const hasilKali = (gejalaMap[trimmedCondition] || 0) * (probMap[rule.result].probabilitas || 0);
+                            hitunganMasingMasingPenyakit.push(`${trimmedCondition}_${rule.result}: ${hasilKali.toFixed(2)}`);
+                            totalProbabilitas += hasilKali;
+                            if (!nilaiRuleKerusakan[rule.result]) {
+                                nilaiRuleKerusakan[rule.result] = probMap[rule.result].kerusakan || 'not found';
+                            }
+                        }
                     });
-
-                    issueInfo["Nilai Bayes"] = bayesValues;
-                    issueInfo["Total Nilai Bayes"] = parseFloat(totalBayes.toFixed(2));
-
-                    response.push(issueInfo);
                 });
 
-                const totalBayesAllIssues = response.slice(2).reduce((total, issue) => total + issue["Total Nilai Bayes"], 0);
-                const percentages = {};
-                const presentaseNilaiPrediksi = {};
+                // Konversi nilaiRuleKerusakan menjadi array untuk respons
+                const nilaiRuleKerusakanArray = Object.keys(nilaiRuleKerusakan).map(kodeKerusakan => `${kodeKerusakan}: ${nilaiRuleKerusakan[kodeKerusakan]}`);
 
-                response.slice(2).forEach(issueInfo => {
-                    const percentage = (issueInfo["Total Nilai Bayes"] / totalBayesAllIssues) * 100;
-                    percentages[issueInfo.code] = parseFloat(percentage.toFixed(2)) + "%";
+                // Membuat array hitungan_masing_masing_kerusakan dengan format yang diinginkan
+                hitunganMasingMasingKerusakan = hitunganMasingMasingPenyakit.map(hitungan => {
+                    const [key, value] = hitungan.split(': ');
+                    const hasilBagi = parseFloat(value) / totalProbabilitas;
+                    return `${key} : ${hasilBagi.toFixed(2)}`;
+                });
 
-                    const selectedObject = response.slice(2).find(obj => obj.code === issueInfo.code);
-                    presentaseNilaiPrediksi[issueInfo.code] = {
-                        kode: issueInfo.code,
-                        persentasi: percentages[issueInfo.code],
-                        nama_kerusakan: selectedObject ? selectedObject.name : ""
+                const hasil = Object.keys(nilaiRuleKerusakan).map(kodeKerusakan => {
+                    const totalKerusakan = hitunganMasingMasingKerusakan
+                        .filter(hitungan => hitungan.includes(kodeKerusakan))
+                        .reduce((acc, hitungan) => acc + parseFloat(hitungan.split(': ')[1]), 0);
+                    return {
+                        nama: nilaiRuleKerusakan[kodeKerusakan],
+                        persentase: Math.floor(totalKerusakan * 100)
                     };
                 });
 
-                response.push({ "Presentase Nilai Prediksi Kerusakan": presentaseNilaiPrediksi });
+                // Menghitung selisih untuk memastikan total 100%
+                const totalPersen = hasil.reduce((acc, curr) => acc + curr.persentase, 0);
+                const selisih = 100 - totalPersen;
 
-                const largestIssue = response.slice(2).reduce((max, issue) => issue["Total Nilai Bayes"] > max["Total Nilai Bayes"] ? issue : max);
-                const largestIssueName = largestIssue.name;
-                const largestIssueCode = largestIssue.code;
-                const largestIssueTotalNilaiBayes = largestIssue["Total Nilai Bayes"];
-                const largestIssuePercentage = percentages[largestIssueCode];
+                if (selisih > 0) {
+                    // Menambahkan selisih ke entri dengan persentase terbesar
+                    hasil.sort((a, b) => b.persentase - a.persentase);
+                    hasil[0].persentase += selisih;
+                }
 
-                const dynamicResponse = `Berdasarkan proses penerapan Metode Naive Bayes yang telah dilakukan, berdasarkan gejala-gejala yang dialami maka kemungkinan sepeda motor matic ini terdiagnosa ${largestIssueName} (${largestIssueCode}) dengan persentase ${largestIssuePercentage}`;
+                const hasilFormatted = hasil.map(item => `${item.nama} : ${item.persentase}%`);
 
-                response.push({ "Hasil": dynamicResponse });
-
-                res.status(200).json(response);
+                res.status(200).json({
+                    gejala_user: gejalaUser,
+                    nilai_rule_kerusakan: nilaiRuleKerusakanArray,
+                    gejala_rules_yang_terjadi: gejalaRulesYangTerjadi,
+                    hitungan_masing_masing_penyakit: hitunganMasingMasingPenyakit,
+                    nilai_total_probabilitas: totalProbabilitas.toFixed(2),
+                    hitungan_masing_masing_kerusakan: hitunganMasingMasingKerusakan,
+                    hasil: hasilFormatted,
+                });
             });
         });
     });
 });
+
+
 
 module.exports = router;
